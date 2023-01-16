@@ -7,44 +7,40 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Looper
-import android.util.Log
 import android.view.View
 import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.paging.LoadState
+import androidx.paging.PagingData
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.*
-import com.skycore.foodplace.adapter.ApiResponse
-import com.skycore.foodplace.adapter.RestaurantAdapter
+import com.skycore.foodplace.adapter.RestaurantPagingAdapter
+import com.skycore.foodplace.apihelper.ApiService
 import com.skycore.foodplace.apihelper.RetrofitHelper
 import com.skycore.foodplace.databinding.ActivityMainBinding
 import com.skycore.foodplace.dialogs.NoInternet
 import com.skycore.foodplace.models.ApiRequest
-import com.skycore.foodplace.models.Businesse
-import com.skycore.foodplace.repository.RestaurantRepository
+import com.skycore.foodplace.paging.LoaderAdapter
 import com.skycore.foodplace.utilities.Utility
 import com.skycore.foodplace.viewmodel.MainViewModel
 import com.skycore.foodplace.viewmodel.MainViewModelFactory
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private lateinit var mainViewModel: MainViewModel
-    private lateinit var rvRestaurants: RecyclerView
 
-    private lateinit var restaurantList: MutableList<Businesse>
-    private lateinit var adapter: RestaurantAdapter
-    private lateinit var repository: RestaurantRepository
+    private lateinit var rvRestaurants: RecyclerView
+    private lateinit var adapter: RestaurantPagingAdapter
+    private lateinit var apiService: ApiService
+
+    private lateinit var viewModel: MainViewModel
 
     private var radius = 0
-    var locationProvider: FusedLocationProviderClient? = null
-    var locationCallback: LocationCallback? = null
-    var locationRequest: LocationRequest.Builder? = null
     var latitude: String = ""
     var longitude: String = ""
 
@@ -54,27 +50,33 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        rvRestaurants = binding.rvRestaurants
-
-        restaurantList = mutableListOf()
-        adapter = RestaurantAdapter(this, restaurantList)
-        rvRestaurants.adapter = adapter
-        rvRestaurants.layoutManager = LinearLayoutManager(this)
-
-        val apiService = RetrofitHelper.getApiService()
-        repository = RestaurantRepository(apiService)
-        mainViewModel =
-            ViewModelProvider(this, MainViewModelFactory(repository))[MainViewModel::class.java]
-
         val seek = binding.sbRadius
         val radiusText = binding.tvDistance
+        val swipeRefresh = binding.swipeRefreshLayout
+
+        rvRestaurants = binding.rvRestaurants
+        adapter = RestaurantPagingAdapter(this)
+        apiService = RetrofitHelper.getApiService()
+        viewModel =
+            ViewModelProvider(this, MainViewModelFactory(apiService))[MainViewModel::class.java]
+
+        rvRestaurants.layoutManager = LinearLayoutManager(this)
+        rvRestaurants.hasFixedSize()
+        rvRestaurants.adapter = adapter.withLoadStateHeaderAndFooter(
+            header = LoaderAdapter(), footer = LoaderAdapter(),
+        )
 
         seek.progress = 5
         seek.progressTintList = ColorStateList.valueOf(Color.BLACK)
         seek.thumbTintList = ColorStateList.valueOf(Color.BLACK)
-
         radiusText.text = Utility.getRadiusText(seek.progress)
+
         getRestaurantData()
+
+        swipeRefresh.setOnRefreshListener {
+            swipeRefresh.isRefreshing = false
+            getRestaurantData()
+        }
 
         seek.setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
@@ -88,6 +90,7 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onStopTrackingTouch(p0: SeekBar?) {
                     Utility.getRadiusText(seek.progress).also { radiusText.text = it }
+
                     getRestaurantData()
                 }
             },
@@ -97,51 +100,46 @@ class MainActivity : AppCompatActivity() {
             checkLocationPermission()
         }
 
-        mainViewModel.restaurants.observe(this) {
-            when (it) {
-                is ApiResponse.Loading -> {
-                    binding.svPagingLoader.visibility = View.VISIBLE
+
+        lifecycleScope.launchWhenCreated {
+            viewModel.postList.observe(this@MainActivity) {
+                adapter.submitData(lifecycle, PagingData.empty())
+                adapter.refresh()
+                adapter.submitData(lifecycle, it)
+            }
+        }
+
+        adapter.addLoadStateListener { loadState ->
+            if (loadState.source.refresh is LoadState.NotLoading && adapter.itemCount < 1) {
+                //Utility.shortToast(this@MainActivity, getText(R.string.noData).toString())
+                binding.apply {
+                    if (tvNoData.visibility == View.GONE)
+                        tvNoData.visibility = View.VISIBLE
+
                 }
-                is ApiResponse.Success -> {
-                    binding.svPagingLoader.visibility = View.GONE
-                    if (it.successData?.businesses?.isEmpty() == true) {
-                        Utility.shortToast(this, getText(R.string.noData).toString())
-                    }
-                    it.successData?.let { it1 -> restaurantList.addAll(it1.businesses) }
-                    adapter.notifyDataSetChanged()
-                }
-                is ApiResponse.Error -> {
-                    binding.svPagingLoader.visibility = View.GONE
-                    Log.e("Api error", it.errorData.toString())
+            } else {
+                binding.apply {
+                    tvNoData.visibility = View.GONE
+                    rvRestaurants.visibility = View.VISIBLE
                 }
             }
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     /**
-     * Api calling
+     * get data from Api
      */
     private fun getRestaurantData() {
-        restaurantList.clear()
         if (Utility.checkInternetConnection(this)) {
             radius = binding.sbRadius.progress * 100
-            GlobalScope.launch {
-                val params = ApiRequest(
-                    "restaurants",
-                    "15",
-                    radius.toString(),
-                    "distance",
-                    "New York City",
-                    longitude,
-                    latitude
-                )
-                val mapParams = params.toMap() as Map<String, String>
-                repository.getRestaurants(mapParams)
-            }
+            viewModel.setCurrentQuery(getApiRequest())
+
         } else {
             val dialog = NoInternet(
-                this, R.style.RoundCornerAlertDialog, "Alert", getString(R.string.no_internet)
+                this,
+                R.style.RoundCornerAlertDialog,
+                getString(R.string.alert),
+                getString(R.string.no_internet)
             )
             dialog.show()
             dialog.onCloseClicked { dialog.dismiss() }
@@ -176,20 +174,26 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("MissingPermission")
     fun getLocation() {
         Utility.shortToast(this, getText(R.string.locationLoading).toString())
-        binding.svPagingLoader.visibility = View.VISIBLE
-        locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
-        locationRequest!!.setMinUpdateIntervalMillis(TimeUnit.SECONDS.toMillis(30))
+        binding.apply {
+            rvRestaurants.visibility = View.GONE
+            svPagingLoader.visibility = View.VISIBLE
+        }
 
-        locationRequest!!.setMaxUpdateDelayMillis(TimeUnit.MINUTES.toMillis(1))
-        locationRequest!!.setMinUpdateDistanceMeters(10f)
-        locationRequest!!.setWaitForAccurateLocation(true)
-        val request = locationRequest!!.build()
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
+        locationRequest.setMinUpdateIntervalMillis(TimeUnit.SECONDS.toMillis(30))
+
+        val locationProvider = LocationServices.getFusedLocationProviderClient(this)
+
+        locationRequest.setMaxUpdateDelayMillis(TimeUnit.MINUTES.toMillis(1))
+        locationRequest.setMinUpdateDistanceMeters(10f)
+        locationRequest.setWaitForAccurateLocation(true)
+        val request = locationRequest.build()
 
         /**
          * this method basically use to update location
          * need to clear call back one get location
          */
-        locationCallback = object : LocationCallback() {
+        val locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 super.onLocationResult(locationResult)
                 binding.svPagingLoader.visibility = View.GONE
@@ -203,8 +207,8 @@ class MainActivity : AppCompatActivity() {
                         latitude = lat
                         longitude = long
                         getRestaurantData()
-                        //unregister call to avoid multiple calling
-                        locationCallback?.let { locationProvider?.removeLocationUpdates(it) }
+                        //unregister call to avoid multiple calling in background
+                        this.let { locationProvider.removeLocationUpdates(it) }
                     } else {
                         Utility.shortToast(
                             this@MainActivity, getText(R.string.invalidLocation).toString()
@@ -218,23 +222,33 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        locationProvider = LocationServices.getFusedLocationProviderClient(this)
-
-        locationProvider!!.requestLocationUpdates(
+        locationProvider.requestLocationUpdates(
             request, locationCallback as LocationCallback, Looper.myLooper()
         )
 
-        /*
-        //Provide last knows location
-        locationProvider!!.lastLocation
-        .addOnSuccessListener(OnSuccessListener<Location?> { location ->
-            if (location != null) {
-                latitude = location.latitude.toString()
-                longitude = location.longitude.toString()
-            }
-            val isValidLocation: Boolean =
-                Utility.latLongValidation(latitude, longitude)
-            if (isValidLocation) retryNetworkAtt()
-        })*/
+        /*  //Provide last knows location
+          locationProvider!!.lastLocation
+              .addOnSuccessListener(OnSuccessListener<Location?> { location ->
+                  if (location != null) {
+                      val lat = location.latitude.toString()
+                      val long = location.longitude.toString()
+
+                      val isValidLocation: Boolean =
+                          Utility.latLongValidation(latitude, longitude)
+                      if (isValidLocation) {
+                          latitude = lat
+                          longitude = long
+                          getRestaurantData()
+                      }
+                  }
+              })*/
     }
+
+    /**
+     * generate query parameter
+     */
+    private fun getApiRequest() = ApiRequest(
+        "restaurants", "15", radius.toString(), "distance", "New York City", longitude, latitude, ""
+    )
+
 }

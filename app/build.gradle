@@ -56,11 +56,15 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines"
 
-    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.5.1'
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.5.1'
+    def livedata = "2.5.1"
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:$livedata"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$livedata"
+
+    implementation "androidx.paging:paging-runtime:3.1.1"
 
     implementation 'com.github.bumptech.glide:glide:4.14.2'
     implementation 'com.github.ybq:Android-SpinKit:1.4.0'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
     implementation 'com.google.android.gms:play-services-location:21.0.1'
 
 }

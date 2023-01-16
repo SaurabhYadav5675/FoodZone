@@ -7,7 +7,8 @@ import android.text.Html
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.core.text.HtmlCompat
+import androidx.paging.PagingDataAdapter
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
@@ -15,9 +16,9 @@ import com.skycore.foodplace.R
 import com.skycore.foodplace.databinding.AdapterRestaurentBinding
 import com.skycore.foodplace.models.Businesse
 
+class RestaurantPagingAdapter constructor(private val context: Context) :
+    PagingDataAdapter<Businesse, RestaurantPagingAdapter.ViewHolder>(COMPARATOR) {
 
-class RestaurantAdapter(private val context: Context, private val restaurantList: List<Businesse>) :
-    RecyclerView.Adapter<RestaurantAdapter.ViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding =
@@ -26,14 +27,15 @@ class RestaurantAdapter(private val context: Context, private val restaurantList
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val restData = restaurantList[position]
-        holder.bind(restData)
+        val item = getItem(position)
+        if (item != null) {
+            holder.biding(item)
+        }
     }
 
-    override fun getItemCount(): Int {
-        return restaurantList.size
-    }
-
+    /**
+     * use to bind view with data
+     */
     inner class ViewHolder(itemView: AdapterRestaurentBinding) :
         RecyclerView.ViewHolder(itemView.root) {
         private val name = itemView.tvName
@@ -42,12 +44,12 @@ class RestaurantAdapter(private val context: Context, private val restaurantList
         private val rating = itemView.tvRating
         private val imageView = itemView.ivFoods
 
-
         @SuppressLint("SetTextI18n")
-        fun bind(restData: Businesse) {
+        fun biding(restData: Businesse) {
             name.text = restData.name
             address.text =
                 "${restData.distance.toInt()}, ${restData.location.display_address.joinToString()}"
+
             rating.text = restData.rating.toString()
 
             val statusText = if (restData.is_closed) {
@@ -57,7 +59,7 @@ class RestaurantAdapter(private val context: Context, private val restaurantList
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                status.text = HtmlCompat.fromHtml(statusText, HtmlCompat.FROM_HTML_MODE_COMPACT)
+                status.text = Html.fromHtml(statusText, Html.FROM_HTML_MODE_COMPACT)
             } else {
                 status.text = Html.fromHtml(statusText)
             }
@@ -70,7 +72,30 @@ class RestaurantAdapter(private val context: Context, private val restaurantList
             } catch (e: Exception) {
                 Log.e("Glide error", e.message.toString())
             }
+        }
 
+    }
+
+    companion object {
+        /**
+         *This class finds the difference between two lists and provides the updated list as an output
+         * This class is used to notify updates to a RecyclerView Adapter.
+         */
+        private val COMPARATOR = object : DiffUtil.ItemCallback<Businesse>() {
+            override fun areItemsTheSame(
+                oldItem: Businesse,
+                newItem: Businesse
+            ): Boolean {
+                return oldItem.id == newItem.id
+            }
+
+            override fun areContentsTheSame(
+                oldItem: Businesse,
+                newItem: Businesse
+            ): Boolean {
+                return oldItem == newItem
+            }
         }
     }
+
 }

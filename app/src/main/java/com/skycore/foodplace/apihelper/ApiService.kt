@@ -11,5 +11,5 @@ interface ApiService {
     @GET("businesses/search")
     suspend fun getRestaurants(
         @QueryMap params: Map<String, String>,
-    ): Response<RestaurantsResponse>
+    ): RestaurantsResponse
 }

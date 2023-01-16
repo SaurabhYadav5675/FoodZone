@@ -6,7 +6,7 @@ data class Businesse(
     val coordinates: Coordinates,
     val display_phone: String,
     val distance: Double,
-    val id: String,
+    var id: String,
     val image_url: String,
     val is_closed: Boolean,
     val location: Location,

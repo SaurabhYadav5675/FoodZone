@@ -10,7 +10,7 @@ import com.skycore.foodplace.databinding.DialogNoInternetBinding
 class NoInternet(context: Context, themeResId: Int) : Dialog(context, themeResId) {
     private lateinit var title: String
     private lateinit var message: String
-    private var onCloseClick: View.OnClickListener? = null
+    private var onCloseClick: View.OnClickListener? = null //get click event action
     private lateinit var binding: DialogNoInternetBinding
 
     constructor(context: Context, themeResId: Int, title: String, message: String) : this(
@@ -38,6 +38,9 @@ class NoInternet(context: Context, themeResId: Int) : Dialog(context, themeResId
         txtMessage.text = message
     }
 
+    /**
+     * Trigger click event and notify
+     */
     fun onCloseClicked(onClickListener: View.OnClickListener) {
         this.onCloseClick = onClickListener
     }

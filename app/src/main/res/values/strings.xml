@@ -3,6 +3,7 @@
     <string name="radius_selector">Radius Selector</string>
     <string name="km_5">5 KM</string>
     <string name="m_100">100 M</string>
+    <string name="alert">Alert</string>
     <string name="no_internet">Internet not available, Cross check your internet connectivity and try again</string>
     <string name="currentlyClose">Currently Close</string>
     <string name="currentlyOpen">Currently Open</string>

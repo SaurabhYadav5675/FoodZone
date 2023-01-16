@@ -32,6 +32,9 @@ object Utility {
 
     }
 
+    /**
+     * convert radius to presentable format
+     */
     fun getRadiusText(progress: Int): String {
         val radius = if (progress < 10) {
             "${progress * 100} M"
@@ -43,6 +46,11 @@ object Utility {
         return radius
     }
 
+    /**
+     * check valid latitude &  longitude
+     * latitude from -90 to 90
+     * longitude from -180 to 180
+     */
     fun latLongValidation(latitude: String, longitude: String): Boolean {
         val isValid: Boolean = if (TextUtils.isEmpty(latitude) || TextUtils.isEmpty(longitude)) {
             false
